@@ -1,0 +1,9 @@
+streamlit
+fastapi
+uvicorn
+python-dotenv
+pydantic
+email-validator
+pytest
+httpx
+openai
