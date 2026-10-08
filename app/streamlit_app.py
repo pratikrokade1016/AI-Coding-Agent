@@ -2,11 +2,11 @@ from pathlib import Path
 
 import streamlit as st
 
-from app.agent.planner import create_plan
-from app.agent.patcher import generate_patch
-from app.agent.applier import apply_file_change
-from app.agent.validator import run_tests
-from app.tools.filesystem import list_files, read_file
+from agent.planner import create_plan
+from agent.patcher import generate_patch
+from agent.applier import apply_file_change
+from agent.validator import run_tests
+from tools.filesystem import list_files, read_file
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
