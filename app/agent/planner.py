@@ -10,6 +10,20 @@ from pydantic import BaseModel, ValidationError
 load_dotenv()
 
 
+def get_config(name: str, default: str | None = None) -> str | None:
+    """Read configuration from environment variables or Streamlit secrets."""
+    value = os.getenv(name)
+
+    if value:
+        return value
+
+    try:
+        import streamlit as st
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
 class RelevantFile(BaseModel):
     path: str
     reason: str
@@ -86,15 +100,15 @@ def create_plan(task: str, files: list[dict]) -> AgentPlan:
     relevant files.
     """
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = get_config("OPENROUTER_API_KEY")
 
     if not api_key:
         raise RuntimeError(
             "OPENROUTER_API_KEY is missing. "
-            "Check your .env file."
+            "Configure it in .env for local use or Streamlit Secrets for deployment."
         )
 
-    model = os.getenv(
+    model = get_config(
         "OPENROUTER_MODEL",
         "nvidia/nemotron-3-ultra-550b-a55b:free",
     )
@@ -105,7 +119,7 @@ def create_plan(task: str, files: list[dict]) -> AgentPlan:
     )
 
     file_listing = "\n".join(
-    f"- {item}" for item in files
+        f"- {item}" for item in files
     )
 
     system_prompt = """
@@ -160,26 +174,6 @@ Project files:
 
     try:
         response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0,
-        max_tokens=3000,
-        )
-
-        if not response.choices:
-            raise RuntimeError(
-            "OpenRouter returned no choices."
-            )
-
-    except Exception as first_error:
-
-    # Free model providers can occasionally return an empty
-    # completion. Retry once before failing the agent.
-        try:
-            response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -187,6 +181,26 @@ Project files:
             ],
             temperature=0,
             max_tokens=3000,
+        )
+
+        if not response.choices:
+            raise RuntimeError(
+                "OpenRouter returned no choices."
+            )
+
+    except Exception as first_error:
+
+        # Free model providers can occasionally return an empty
+        # completion. Retry once before failing the agent.
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0,
+                max_tokens=3000,
             )
 
         except Exception as second_error:
@@ -195,8 +209,7 @@ Project files:
                 "OpenRouter planner request failed after retry.\n\n"
                 f"First attempt: {first_error}\n"
                 f"Second attempt: {second_error}"
-                ) from second_error
-
+            ) from second_error
 
     if not response.choices:
         raise RuntimeError(
@@ -204,23 +217,23 @@ Project files:
             f"Model: {getattr(response, 'model', None)}\n"
             f"Response ID: {getattr(response, 'id', None)}\n"
             f"Provider: {getattr(response, 'provider', None)}"
-            )
+        )
 
     message = response.choices[0].message
 
     if not message:
         raise RuntimeError(
-        "Nemotron returned an empty message."
+            "Nemotron returned an empty message."
         )
 
     content = message.content
 
     if not content:
         raise RuntimeError(
-        "Nemotron returned no text content.\n\n"
-        f"Finish reason: "
-        f"{response.choices[0].finish_reason}\n"
-        f"Tool calls: {message.tool_calls}"
+            "Nemotron returned no text content.\n\n"
+            f"Finish reason: "
+            f"{response.choices[0].finish_reason}\n"
+            f"Tool calls: {message.tool_calls}"
         )
 
     try:

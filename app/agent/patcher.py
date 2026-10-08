@@ -12,6 +12,20 @@ from pydantic import BaseModel
 load_dotenv()
 
 
+def get_config(name: str, default: str | None = None) -> str | None:
+    """Read configuration from environment variables or Streamlit secrets."""
+    value = os.getenv(name)
+
+    if value:
+        return value
+
+    try:
+        import streamlit as st
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
 class FileChange(BaseModel):
     operation: str
     path: str
@@ -31,14 +45,15 @@ def generate_patch(
     file_contents: dict[str, str],
 ) -> PatchResult:
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = get_config("OPENROUTER_API_KEY")
 
     if not api_key:
         raise RuntimeError(
-            "OPENROUTER_API_KEY is missing. Check your .env file."
+            "OPENROUTER_API_KEY is missing. "
+            "Configure it in .env for local use or Streamlit Secrets for deployment."
         )
 
-    model = os.getenv(
+    model = get_config(
         "OPENROUTER_MODEL",
         "nvidia/nemotron-3-ultra-550b-a55b:free",
     )
