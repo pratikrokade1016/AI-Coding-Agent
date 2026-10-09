@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import streamlit as st
@@ -12,46 +13,231 @@ from tools.filesystem import list_files, read_file
 BASE_DIR = Path(__file__).resolve().parent.parent
 SAMPLE_PROJECT = BASE_DIR / "sample-project"
 
-
 st.set_page_config(
-    page_title="AI Coding Agent",
-    page_icon="🤖",
+    page_title="DevAgent | AI Coding Workspace",
+    page_icon="D",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-if "plan" not in st.session_state:
-    st.session_state["plan"] = None
+# --------------------------------------------------
+# SESSION STATE
+# --------------------------------------------------
 
-if "file_contents" not in st.session_state:
-    st.session_state["file_contents"] = {}
+DEFAULTS = {
+    "plan": None,
+    "file_contents": {},
+    "patch_result": None,
+    "applied_files": [],
+    "test_result": None,
+    "active_task": "",
+}
 
-if "patch_result" not in st.session_state:
-    st.session_state["patch_result"] = None
+for key, value in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
-st.title("🤖 AI Coding Agent")
-st.caption("Milestone 2 — task understanding, relevant-file selection and planning")
 
+# --------------------------------------------------
+# STYLING
+# --------------------------------------------------
+
+st.markdown(
+    """
+    <style>
+    :root {
+        --accent: #8b7cff;
+        --accent-soft: rgba(139, 124, 255, 0.13);
+        --panel: var(--secondary-background-color);
+        --border: rgba(128, 128, 128, 0.22);
+    }
+
+    .stApp {
+        background: var(--background-color);
+    }
+
+    #MainMenu, footer {
+        visibility: hidden;
+    }
+
+    header[data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    [data-testid="stSidebar"] {
+        border-right: 1px solid var(--border);
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.5rem;
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 5px;
+    }
+
+    .brand-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 13px;
+        background: linear-gradient(135deg, #a397ff, #6954dc);
+        color: white;
+        font-size: 22px;
+        font-weight: 800;
+    }
+
+    .brand-title {
+        font-size: 21px;
+        font-weight: 750;
+        letter-spacing: -0.8px;
+    }
+
+    .muted {
+        color: var(--text-color);
+        opacity: 0.63;
+        font-size: 0.84rem;
+    }
+
+    .hero {
+        padding: 24px 0 15px 0;
+    }
+
+    .eyebrow {
+        color: #a397ff;
+        font-size: 0.75rem;
+        font-weight: 750;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+    }
+
+    .hero h1 {
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 780;
+        letter-spacing: -1.7px;
+        line-height: 1.13;
+        margin: 0 0 12px 0;
+    }
+
+    .hero p {
+        font-size: 1rem;
+        opacity: 0.72;
+        line-height: 1.7;
+        max-width: 700px;
+    }
+
+    .section-heading {
+        font-size: 1.1rem;
+        font-weight: 720;
+        letter-spacing: -0.3px;
+        margin-bottom: 5px;
+    }
+
+    .step-label {
+        font-size: 0.79rem;
+        font-weight: 650;
+        line-height: 1.4;
+    }
+
+    .step-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 13px 10px;
+        min-height: 76px;
+        background: var(--secondary-background-color);
+    }
+
+    .step-number {
+        color: #a397ff;
+        font-size: 0.75rem;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
+
+    .file-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 13px 15px;
+        margin: 8px 0;
+    }
+
+    .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #39c98a;
+        margin-right: 7px;
+    }
+
+    .stButton > button {
+        border-radius: 10px;
+        min-height: 43px;
+        font-weight: 650;
+        transition: border-color 0.15s ease;
+    }
+
+    .stButton > button[kind="primary"] {
+        border: 1px solid #8b7cff;
+    }
+
+    div[data-testid="stTextArea"] textarea {
+        border-radius: 12px;
+        line-height: 1.6;
+    }
+
+    div[data-testid="stTabs"] button {
+        font-weight: 650;
+    }
+
+    div[data-testid="stExpander"] {
+        border-radius: 10px;
+        border-color: var(--border);
+    }
+
+    .footer-note {
+        font-size: 0.78rem;
+        opacity: 0.55;
+        text-align: center;
+        padding: 25px 0 10px 0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# --------------------------------------------------
+# FILE DISCOVERY
+# --------------------------------------------------
 
 @st.cache_data
 def inspect_codebase():
     files = list_files(SAMPLE_PROJECT)
-
     result = []
 
     for file_path in files:
-        relative_path = str(Path(file_path).relative_to(SAMPLE_PROJECT))
+        relative_path = str(
+            Path(file_path).relative_to(SAMPLE_PROJECT)
+        )
 
         try:
-            content = read_file(file_path, workspace=SAMPLE_PROJECT)
+            content = read_file(
+                file_path,
+                workspace=SAMPLE_PROJECT,
+            )
             result.append((relative_path, content))
-        except UnicodeDecodeError:
-            # Ignore binary/non-text files in this initial version.
+        except (UnicodeDecodeError, OSError):
             continue
 
     return result
 
-
-st.subheader("1. Codebase")
 
 try:
     codebase = inspect_codebase()
@@ -59,350 +245,469 @@ except Exception as exc:
     st.error(f"Could not inspect the sample project: {exc}")
     st.stop()
 
-st.success(f"Discovered {len(codebase)} readable files.")
 
-with st.expander("View codebase files"):
-    for relative_path, _ in codebase:
-        st.write(f"• `{relative_path}`")
+# --------------------------------------------------
+# SIDEBAR
+# --------------------------------------------------
+
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="brand">
+            <div class="brand-icon">D</div>
+            <div>
+                <div class="brand-title">DevAgent</div>
+                <div class="muted">AI Coding Workspace</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    st.caption("WORKSPACE")
+
+    st.markdown("**Sample Project**")
+    st.caption("Python · FastAPI · Pytest")
+
+    st.markdown(
+        f"**{len(codebase)}** readable project files"
+    )
+
+    with st.expander("Browse project files"):
+        for path, _ in codebase:
+            st.code(path, language="text")
+
+    st.divider()
+    st.caption("AGENT PIPELINE")
+
+    stages = [
+        ("01", "Understand task"),
+        ("02", "Inspect files"),
+        ("03", "Review changes"),
+        ("04", "Apply changes"),
+        ("05", "Run tests"),
+    ]
+
+    for number, label in stages:
+        st.markdown(
+            f"""
+            <div style="display:flex; gap:11px;
+                        align-items:center; padding:8px 0;">
+                <span style="color:#a397ff; font-weight:750;
+                             font-size:0.8rem;">{number}</span>
+                <span style="font-size:0.88rem;">{label}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    st.markdown(
+        '<span class="status-dot"></span> Workspace ready',
+        unsafe_allow_html=True,
+    )
+    st.caption("Model requests use your OpenRouter configuration.")
 
 
-st.subheader("2. Coding task")
+# --------------------------------------------------
+# HEADER
+# --------------------------------------------------
+
+st.markdown(
+    """
+    <div class="hero">
+        <div class="eyebrow">AI Developer Tools / Coding Agent</div>
+        <h1>Build something<br>better with AI.</h1>
+        <p>
+            Describe a coding task. DevAgent will explore your codebase,
+            create an implementation plan, propose changes, and validate
+            the result with automated tests.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# --------------------------------------------------
+# TASK COMPOSER
+# --------------------------------------------------
+
+st.markdown('<div class="section-heading">What should I work on?</div>',
+            unsafe_allow_html=True)
+st.caption("Describe the change you want in plain English.")
 
 task = st.text_area(
-    "Describe what the coding agent should do",
-    height=120,
+    "Coding task",
+    key="task_input",
+    height=125,
+    label_visibility="collapsed",
     placeholder=(
         "Example: Add input validation to the user registration "
-        "API and write tests for invalid input."
+        "API and write tests for invalid input scenarios..."
     ),
 )
 
+col_hint, col_run = st.columns([3, 1])
 
-if st.button("🧠 Analyze Task & Create Plan", type="primary"):
-    if not task.strip():
-        st.warning("Please enter a coding task.")
-        st.stop()
+with col_hint:
+    st.caption("Tip: Be specific about expected behavior and edge cases.")
 
-    with st.status("Agent is analyzing the codebase...", expanded=True) as status:
-        st.write("✓ Task received")
-        st.write("✓ Codebase inspected")
-        st.write("→ Asking the LLM to identify relevant files and create a plan...")
-
-        try:
-            result = create_plan(task, codebase)
-            # Save the plan because Streamlit reruns the script
-            st.session_state["plan"] = result
-        except Exception as exc:
-            status.update(label="Agent failed", state="error")
-            st.error(str(exc))
-            st.stop()
-
-        status.update(label="Plan created", state="complete")
-
-    st.subheader("3. Task Understanding")
-    st.write(result.task_summary)
-
-    st.subheader("4. Relevant Files")
-
-    for item in result.relevant_files:
-        st.markdown(f"**`{item.path}`**")
-        st.caption(item.reason)
-
-    st.subheader("5. Implementation Plan")
-
-    for index, step in enumerate(result.plan, start=1):
-        st.write(f"**{index}.** {step}")
-
-    if result.assumptions:
-        st.subheader("6. Assumptions")
-
-        for assumption in result.assumptions:
-            st.write(f"• {assumption}")
-
-    st.success(
-        "Planning milestone complete. "
-        "The next milestone will generate and apply controlled code patches."
-    )
-
-# ============================================================
-# 7. SOURCE CODE INSPECTION
-# ============================================================
-
-st.divider()
-
-st.subheader("7. Source Code Inspection")
-
-saved_plan = st.session_state.get("plan")
-
-if saved_plan is not None:
-
-    selected_files = [
-        item.path
-        for item in saved_plan.relevant_files
-    ]
-
-    file_contents = st.session_state.get(
-        "file_contents",
-        {}
-    )
-
-    if not file_contents:
-
-        for relative_path in selected_files:
-
-            file_path = SAMPLE_PROJECT / relative_path
-
-            content = read_file(
-                file_path,
-                workspace=SAMPLE_PROJECT,
-            )
-
-            file_contents[relative_path] = content
-
-        st.session_state["file_contents"] = file_contents
-
-    # Display inspected files
-    if file_contents:
-
-        st.success(
-            f"Inspected {len(file_contents)} relevant file(s)."
-        )
-
-        for path, content in file_contents.items():
-
-            with st.expander(f"📄 {path}"):
-
-                st.code(
-                    content,
-                    language="python"
-                )
-
-    else:
-
-        st.warning(
-            "No relevant source files could be inspected."
-        )
-
-# ============================================================
-# 8. PROPOSED CODE CHANGES
-# ============================================================
-
-st.divider()
-
-st.subheader("8. Proposed Code Changes")
-
-saved_plan = st.session_state.get("plan")
-
-file_contents = st.session_state.get(
-    "file_contents",
-    {}
-)
-
-if saved_plan is None:
-
-    st.info(
-        "Create the implementation plan first."
-    )
-
-elif not file_contents:
-
-    st.warning(
-        "No relevant source files have been inspected yet."
-    )
-
-else:
-
-    st.write(
-        "The agent has inspected the relevant source files. "
-        "You can now generate a proposed code patch."
-    )
-
-    if st.button(
-        "🛠️ Generate Proposed Patch",
+with col_run:
+    analyze_clicked = st.button(
+        "Analyze task  →",
         type="primary",
-    ):
+        use_container_width=True,
+        key="analyze_task",
+    )
 
-        plan_text = "\n".join(
-            f"{index + 1}. {step}"
-            for index, step in enumerate(
-                saved_plan.plan
+
+# --------------------------------------------------
+# PLAN GENERATION
+# --------------------------------------------------
+
+if analyze_clicked:
+    if not task.strip():
+        st.warning("Enter a coding task before running the agent.")
+    else:
+        # Clear the previous task's state before starting a new one.
+        for key in [
+            "plan",
+            "file_contents",
+            "patch_result",
+            "applied_files",
+            "test_result",
+        ]:
+            st.session_state[key] = (
+                {} if key == "file_contents" else
+                [] if key == "applied_files" else
+                None
             )
-        )
+
+        st.session_state["active_task"] = task.strip()
 
         with st.status(
-            "Agent is generating the proposed patch...",
-            expanded=True
+            "Analyzing your task...",
+            expanded=True,
         ) as status:
+            st.write("Task received")
+            st.write("Project file list loaded")
+            st.write("Identifying relevant files and planning changes")
 
-            st.write("✓ Task understood")
-            st.write("✓ Relevant files identified")
-            st.write("✓ Source files inspected")
-            st.write(
-                "→ Asking Nemotron to generate code changes..."
+            try:
+                result = create_plan(
+                    task.strip(),
+                    codebase,
+                )
+
+                st.session_state["plan"] = result
+                status.update(
+                    label="Implementation plan ready",
+                    state="complete",
+                    expanded=False,
+                )
+
+            except Exception as exc:
+                status.update(
+                    label="Planning failed",
+                    state="error",
+                    expanded=True,
+                )
+                st.error(str(exc))
+
+
+# --------------------------------------------------
+# WORKFLOW PROGRESS
+# --------------------------------------------------
+
+saved_plan = st.session_state.get("plan")
+saved_patch = st.session_state.get("patch_result")
+applied_files = st.session_state.get("applied_files", [])
+test_result = st.session_state.get("test_result")
+
+st.divider()
+st.markdown("### Agent workspace")
+
+progress_columns = st.columns(5)
+
+progress_states = [
+    saved_plan is not None,
+    bool(st.session_state.get("file_contents")),
+    saved_patch is not None,
+    bool(applied_files),
+    test_result is not None,
+]
+
+progress_labels = [
+    "Understand",
+    "Inspect",
+    "Review",
+    "Apply",
+    "Validate",
+]
+
+for index, column in enumerate(progress_columns):
+    complete = progress_states[index]
+
+    with column:
+        st.markdown(
+            f"""
+            <div class="step-card">
+                <div class="step-number">
+                    {"✓ COMPLETE" if complete else f"STEP {index + 1:02d}"}
+                </div>
+                <div class="step-label">{progress_labels[index]}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# --------------------------------------------------
+# WORKSPACE TABS
+# --------------------------------------------------
+
+plan_tab, review_tab, validation_tab = st.tabs(
+    ["Plan & Files", "Code Review", "Validation"]
+)
+
+
+# --------------------------------------------------
+# PLAN & SOURCE INSPECTION
+# --------------------------------------------------
+
+with plan_tab:
+    if saved_plan is None:
+        st.info("Your implementation plan will appear here after analysis.")
+    else:
+        st.markdown("#### Task understanding")
+        st.write(saved_plan.task_summary)
+
+        st.divider()
+        st.markdown("#### Relevant files")
+
+        for item in saved_plan.relevant_files:
+            with st.container(border=True):
+                st.markdown(f"**`{item.path}`**")
+                st.caption(item.reason)
+
+        st.divider()
+        st.markdown("#### Implementation plan")
+
+        for index, step in enumerate(saved_plan.plan, start=1):
+            st.markdown(f"**{index}.** {step}")
+
+        if saved_plan.assumptions:
+            with st.expander("Assumptions"):
+                for assumption in saved_plan.assumptions:
+                    st.write(f"- {assumption}")
+
+        # Inspect the selected files once per task.
+        file_contents = st.session_state.get("file_contents", {})
+
+        if not file_contents:
+            inspected = {}
+
+            for item in saved_plan.relevant_files:
+                try:
+                    inspected[item.path] = read_file(
+                        SAMPLE_PROJECT / item.path,
+                        workspace=SAMPLE_PROJECT,
+                    )
+                except Exception as exc:
+                    st.error(f"Could not inspect {item.path}: {exc}")
+
+            st.session_state["file_contents"] = inspected
+            file_contents = inspected
+
+        st.divider()
+        st.markdown("#### Source code inspection")
+        st.caption(f"{len(file_contents)} relevant file(s) inspected")
+
+        for path, content in file_contents.items():
+            with st.expander(path):
+                suffix = Path(path).suffix.lower()
+                language = {
+                    ".py": "python",
+                    ".js": "javascript",
+                    ".ts": "typescript",
+                    ".json": "json",
+                    ".md": "markdown",
+                    ".html": "html",
+                    ".css": "css",
+                    ".sql": "sql",
+                }.get(suffix, "text")
+
+                st.code(content, language=language)
+
+
+# --------------------------------------------------
+# CODE REVIEW AND APPLY
+# --------------------------------------------------
+
+with review_tab:
+    file_contents = st.session_state.get("file_contents", {})
+    saved_plan = st.session_state.get("plan")
+    saved_patch = st.session_state.get("patch_result")
+
+    if saved_plan is None:
+        st.info("Analyze a task before generating code changes.")
+
+    elif not file_contents:
+        st.warning("No relevant files were inspected. Review the task and try again.")
+
+    else:
+        st.markdown("#### Proposed implementation")
+        st.caption(
+            "Review the generated changes before applying them to the sample project."
+        )
+
+        if st.button(
+            "Generate proposed changes",
+            type="primary",
+            use_container_width=True,
+            key="generate_patch",
+        ):
+            plan_text = "\n".join(
+                f"{index + 1}. {step}"
+                for index, step in enumerate(saved_plan.plan)
             )
 
             try:
-
-                patch_result = generate_patch(
-                    task=task,
-                    plan=plan_text,
-                    file_contents=file_contents,
-                )
+                with st.spinner("Generating code changes..."):
+                    patch_result = generate_patch(
+                        task=st.session_state["active_task"],
+                        plan=plan_text,
+                        file_contents=file_contents,
+                    )
 
                 st.session_state["patch_result"] = patch_result
+                st.session_state["applied_files"] = []
+                st.session_state["test_result"] = None
+                st.rerun()
 
             except Exception as exc:
+                st.error(f"Patch generation failed: {exc}")
 
-                status.update(
-                    label="Patch generation failed",
-                    state="error"
-                )
+        saved_patch = st.session_state.get("patch_result")
 
-                st.error(str(exc))
-                st.stop()
+        if saved_patch:
+            st.success(saved_patch.summary)
 
-            status.update(
-                label="Proposed patch generated",
-                state="complete"
+            for change in saved_patch.changes:
+                with st.container(border=True):
+                    left, right = st.columns([4, 1])
+
+                    with left:
+                        st.markdown(f"**`{change.path}`**")
+                        st.caption(change.explanation)
+
+                    with right:
+                        st.markdown(f"`{change.operation.upper()}`")
+
+                    st.code(change.patch or "No textual differences.",
+                            language="diff")
+
+            st.divider()
+            st.warning(
+                "Applying changes will modify the sample project files."
             )
 
+            if not st.session_state.get("applied_files"):
+                if st.button(
+                    "Apply changes to workspace",
+                    type="primary",
+                    use_container_width=True,
+                    key="apply_changes",
+                ):
+                    try:
+                        changed_files = []
 
-# ============================================================
-# DISPLAY PATCH RESULT
-# ============================================================
+                        for change in saved_patch.changes:
+                            changed = apply_file_change(
+                                workspace=SAMPLE_PROJECT,
+                                operation=change.operation,
+                                path=change.path,
+                                content=change.content,
+                            )
+                            changed_files.append(changed)
 
-patch_result = st.session_state.get(
-    "patch_result"
-)
+                        st.session_state["applied_files"] = changed_files
+                        st.session_state["test_result"] = None
 
-if patch_result:
+                        st.success(
+                            f"Applied {len(changed_files)} file change(s)."
+                        )
+                        st.rerun()
 
-    st.success(
-        "Proposed patch generated successfully."
-    )
-
-    st.markdown("### Summary")
-
-    st.write(
-        patch_result.summary
-    )
-
-    st.markdown("### Changed Files")
-
-    for change in patch_result.changes:
-
-        operation_label = change.operation.upper()
-
-        st.markdown(
-            f"#### 📄 `{change.path}` — `{operation_label}`"
-        )
-
-        st.markdown(
-            f"**Why this changes:** "
-            f"{change.explanation}"
-        )
-
-        st.markdown("**Proposed Diff:**")
-
-        st.code(
-            change.patch,
-            language="diff"
-        )
-
-        st.divider()
-
-st.subheader("9. Apply Changes")
-
-st.warning(
-    "This will modify the sample project using the "
-    "AI-generated patch."
-)
-
-if st.button("✅ Apply Proposed Patch", type="primary"):
-    try:
-        all_changed_files = []
-
-        for change in patch_result.changes:
-
-            changed = apply_file_change(
-                workspace=SAMPLE_PROJECT,
-                operation=change.operation,
-                path=change.path,
-                content=change.content,
-            )
-
-            all_changed_files.append(changed)
-
-        st.session_state["applied_files"] = all_changed_files
-
-        st.success(
-            f"Successfully applied {len(all_changed_files)} file change(s)."
-        )
-
-        for file_path in all_changed_files:
-            st.write(f"• `{file_path}`")
-
-    except Exception as exc:
-        st.error(f"File change failed: {exc}")
+                    except Exception as exc:
+                        st.error(f"Could not apply changes: {exc}")
+            else:
+                st.success("Changes have been applied.")
+                for path in st.session_state["applied_files"]:
+                    st.write(f"- `{path}`")
 
 
-# ============================================================
-# 10. VALIDATION
-# ============================================================
+# --------------------------------------------------
+# VALIDATION
+# --------------------------------------------------
 
-st.divider()
+with validation_tab:
+    applied_files = st.session_state.get("applied_files", [])
+    test_result = st.session_state.get("test_result")
 
-st.subheader("10. Validation")
+    st.markdown("#### Automated validation")
+    st.caption("Run the sample project's Pytest suite after applying changes.")
 
-applied_files = st.session_state.get(
-    "applied_files",
-    []
-)
+    if not applied_files:
+        st.info("Apply the proposed changes before running validation.")
+    else:
+        st.markdown("**Changed files**")
+        for path in applied_files:
+            st.write(f"- `{path}`")
 
-if not applied_files:
-
-    st.info(
-        "Apply the proposed patch first."
-    )
-
-else:
-
-    st.success(
-        f"Changed {len(applied_files)} file(s)."
-    )
-
-    for file_path in applied_files:
-
-        st.write(
-            f"• `{file_path}`"
-        )
-
-    if st.button(
-        "🧪 Run Tests",
-        type="primary",
-    ):
-
-        with st.spinner(
-            "Running project tests..."
+        if st.button(
+            "Run tests",
+            type="primary",
+            use_container_width=True,
+            key="run_tests",
         ):
+            try:
+                with st.spinner("Running Pytest..."):
+                    passed, output = run_tests(SAMPLE_PROJECT)
 
-            passed, output = run_tests(
-                SAMPLE_PROJECT
-            )
+                st.session_state["test_result"] = {
+                    "passed": passed,
+                    "output": output,
+                }
+                st.rerun()
 
-        if passed:
+            except Exception as exc:
+                st.error(f"Validation could not run: {exc}")
 
-            st.success(
-                "All tests passed."
-            )
+        test_result = st.session_state.get("test_result")
 
-        else:
+        if test_result is not None:
+            if test_result["passed"]:
+                st.success("All tests passed.")
+            else:
+                st.error("Some tests failed.")
 
-            st.error(
-                "Tests failed."
-            )
+            st.code(test_result["output"] or "No test output.", language="text")
 
-        st.code(
-            output,
-            language="text"
-        )
+
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+
+st.markdown(
+    """
+    <div class="footer-note">
+        DevAgent · AI-assisted coding with reviewable changes and automated validation
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
