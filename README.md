@@ -72,31 +72,100 @@
 
 # 
 
-# \## Run Locally
+## Running the Project Locally:-
 
-# 
+Follow these steps to run the AI Coding Agent on your local machine.
 
-# \### 1. Open the project
+### 1. Prerequisites
 
-# 
+Make sure you have the following installed:
 
-# Open the `coding-agent` folder in VS Code.
+- Python 3.10 or later
+- Git
+- Visual Studio Code
 
-# 
+### 2. Open the Project
 
-# Open:
+Clone the repository and open the project folder in VS Code.
 
-# 
+```powershell
+git clone https://github.com/pratikrokade1016/AI-Coding-Agent.git
+cd AI-Coding-Agent
+```
 
-# \*\*Terminal → New Terminal\*\*
+If you have already downloaded or cloned the project, open the existing `coding-agent` folder in VS Code instead.
 
-# 
+### 3. Open the Terminal
 
-# Make sure the terminal is in:
+In VS Code, select **Terminal → New Terminal**.
 
-# 
+Make sure the terminal is running from the project root directory, where `requirements.txt` is located.
 
-# ```text
+### 4. Create and Activate a Virtual Environment
 
-# coding-agent
+Create a Python virtual environment:
+
+```powershell
+python -m venv venv
+```
+
+Activate it in Windows PowerShell:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+If activation is successful, your terminal will display `(venv)`.
+
+### 5. Install Dependencies
+
+Install the required Python packages:
+
+```powershell
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 6. Configure the OpenRouter API Key
+
+Create a `.env` file in the project root by copying `.env.example`.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Open `.env` and add your OpenRouter API key and model configuration using the variable names provided in `.env.example`.
+
+Keep your actual API key private. Do not commit `.env` to GitHub.
+
+### 7. Run the Application
+
+From the project root, execute:
+
+```powershell
+python -m streamlit run app/streamlit_app.py
+```
+
+Streamlit will provide a local URL, usually:
+
+`http://localhost:8501`
+
+Open the URL in your browser to access the AI Coding Agent.
+
+### 8. Test the Application
+
+1. Enter a coding task in natural language.
+2. Review the generated implementation plan.
+3. Inspect the relevant source files.
+4. Generate and review the proposed code diff.
+5. Apply the changes when ready.
+6. Run the validation step and review the test results.
+
+### Troubleshooting
+
+- **Python is not recognized:** Try using `py` instead of `python` in the commands.
+- **Activation is blocked:** Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in PowerShell, then activate the environment again.
+- **Missing dependencies:** Confirm the virtual environment is active and reinstall the packages.
+- **API errors:** Verify that your OpenRouter API key and model configuration are correct.
+- **Port already in use:** Run Streamlit with another port, for example `python -m streamlit run app/streamlit_app.py --server.port 8502`.
 
